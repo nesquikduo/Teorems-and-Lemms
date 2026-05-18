@@ -1,50 +1,52 @@
 import os
 import json
 import fitz
-
-def is_start(word):
-    w = word.lower()
-    if w == "теорема" or w == "лемма":
-        return True
-    return False
+import re
 
 def extract_blocks(text):
-    text = text.replace("\n", " ")
-    words = text.split()
-    results = []
-    i = 0
-    while i < len(words):
-        if is_start(words[i]):
-            block = words[i]
-            i += 1
-            if i < len(words):
-                if words[i].replace(".", "").isdigit():
-                    block += " " + words[i]
-                    i += 1
 
-            while i < len(words):
-                block += " " + words[i]
-                if "." in words[i]:
-                    break
-                i += 1
-            results.append(block.strip())
-        i += 1
+    text = text.replace("\n", " ")
+
+    pattern = r'(Теорема(?:\s+\d+)?\. .*?\.)|(Лемма(?:\s+\d+)?\. .*?\.)'
+
+    matches = re.findall(pattern, text)
+
+    results = []
+
+    for theorem, lemma in matches:
+
+        if theorem:
+            results.append(theorem.strip())
+
+        if lemma:
+            results.append(lemma.strip())
+
     return results
 
 folder = "pdf_files"
+
 all_results = []
 
 for file in os.listdir(folder):
+
     if file.endswith(".pdf"):
-        doc = fitz.open(os.path.join(folder, file))
+
+        path = os.path.join(folder, file)
+
+        doc = fitz.open(path)
+
         text = ""
+
         for page in doc:
             text += page.get_text()
+
         blocks = extract_blocks(text)
-        for b in blocks:
+
+        for block in blocks:
+
             all_results.append({
                 "file": file,
-                "text": b
+                "text": block
             })
 
 with open("result.json", "w", encoding="utf-8") as f:
