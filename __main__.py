@@ -3,11 +3,31 @@ import json
 import fitz
 import re
 
+from natasha import Segmenter
+from natasha import Doc
+
+segmenter = Segmenter()
+
+def normalize_text(text):
+
+    doc = Doc(text)
+    doc.segment(segmenter)
+
+    clean_text = ""
+
+    for token in doc.tokens:
+        clean_text += token.text + " "
+
+    return clean_text
+
 def extract_blocks(text):
 
     text = text.replace("\n", " ")
 
-    pattern = r'(Теорема(?:\s+\d+)?\. .*?\.)|(Лемма(?:\s+\d+)?\. .*?\.)'
+    # обработка Natasha
+    text = normalize_text(text)
+
+    pattern = r'(Теорема(?:\s+\d+)?\s*\.\s.*?\.)|(Лемма(?:\s+\d+)?\s*\.\s.*?\.)'
 
     matches = re.findall(pattern, text)
 
