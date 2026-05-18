@@ -30,11 +30,15 @@ def extract_blocks(text):
     results = []
     for theorem, lemma in matches:
         if theorem:
-            theorem = normalize_text(theorem)
-            results.append(theorem)
+            results.append({
+                "type": "theorem",
+                "text": normalize_text(theorem)
+            })
         if lemma:
-            lemma = normalize_text(lemma)
-            results.append(lemma)
+            results.append({
+                "type": "lemma",
+                "text": normalize_text(lemma)
+            })
     return results
 
 folder = "pdf_files"
@@ -45,15 +49,19 @@ for file in os.listdir(folder):
     if file.endswith(".pdf"):
         path = os.path.join(folder, file)
         doc = fitz.open(path)
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        blocks = extract_blocks(text)
-        for block in blocks:
-            all_results.append({
-                "file": file,
-                "text": block
-            })
+        metadata = doc.metadata
+        author = metadata.get("author", "")
+        for page_num, page in enumerate(doc):
+            text = page.get_text()
+            blocks = extract_blocks(text)
+            for block in blocks:
+                all_results.append({
+                    "file": file,
+                    "author": author,
+                    "page": page_num + 1,
+                    "type": block["type"],
+                    "text": block["text"]
+                })
 
 with open("result.json", "w", encoding="utf-8") as f:
 
