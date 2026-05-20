@@ -13,7 +13,7 @@ def clean_text(text):
     text = text.replace("\n", " ")
     text = text.replace("\t", " ")
     text = re.sub(r"\s+", " ", text)
-    return text
+    return text.strip()
 
 def normalize_text(text):
     doc = Doc(text)
@@ -26,18 +26,24 @@ def normalize_text(text):
 def extract_blocks(text):
     text = clean_text(text)
     pattern = r'(Теорема(?:\s+\d+)?\s*[.-]\s.*?\.)|(Лемма(?:\s+\d+)?\s*[.-]\s.*?\.)'
-    matches = re.findall(pattern, text)
+    matches = re.finditer(pattern, text)
     results = []
-    for theorem, lemma in matches:
+    for match in matches:
+        theorem = match.group(1)
+        lemma = match.group(2)
         if theorem:
             results.append({
                 "type": "theorem",
-                "text": normalize_text(theorem)
+                "text": normalize_text(theorem),
+                "start_index": match.start(),
+                "end_index": match.end()
             })
         if lemma:
             results.append({
                 "type": "lemma",
-                "text": normalize_text(lemma)
+                "text": normalize_text(lemma),
+                "start_index": match.start(),
+                "end_index": match.end()
             })
     return results
 
@@ -60,11 +66,12 @@ for file in os.listdir(folder):
                     "author": author,
                     "page": page_num + 1,
                     "type": block["type"],
-                    "text": block["text"]
+                    "text": block["text"],
+                    "start_index": block["start_index"],
+                    "end_index": block["end_index"]
                 })
 
 with open("result.json", "w", encoding="utf-8") as f:
-
     json.dump(
         all_results,
         f,
