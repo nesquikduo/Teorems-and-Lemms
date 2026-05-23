@@ -4,14 +4,8 @@ import fitz
 import re
 import requests
 
-from natasha import Segmenter
-from natasha import Doc
-
-segmenter = Segmenter()
-
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "qwen2.5:3b"
-
 
 def clean_text(text):
     text = re.sub(r'(\w)-\s+(\w)', r'\1\2', text)
@@ -19,18 +13,6 @@ def clean_text(text):
     text = text.replace("\t", " ")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
-
-
-def normalize_text(text):
-    doc = Doc(text)
-    doc.segment(segmenter)
-
-    clean = ""
-
-    for token in doc.tokens:
-        clean += token.text + " "
-
-    return clean.strip()
 
 def clean_metadata_line(text):
     text = clean_text(text)
@@ -220,11 +202,9 @@ def extract_blocks(text):
         r')'
     )
 
-    matches = re.finditer(pattern, text, flags=re.IGNORECASE)
-
     results = []
 
-    for match in matches:
+    for match in re.finditer(pattern, text, flags=re.IGNORECASE):
         block_text = match.group(1).strip()
         block_type_word = match.group(2).lower()
 
@@ -282,7 +262,8 @@ for file in os.listdir(folder):
 with open("result.json", "w", encoding="utf-8") as f:
     json.dump(
         all_results,
-        f,ensure_ascii=False,
+        f,
+        ensure_ascii=False,
         indent=4
     )
 
