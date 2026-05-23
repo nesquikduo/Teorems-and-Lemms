@@ -32,27 +32,79 @@ def normalize_text(text):
 
     return clean.strip()
 
+def clean_metadata_line(text):
+    text = clean_text(text)
+    text = re.sub(r'([А-Яа-яЁёA-Za-z])\d+$', r'\1', text)
 
-def ask_qwen_for_metadata(text):
+    return text.strip()
+
+def normalize_authors(authors):
+    result = []
+
+    if not isinstance(authors, list):
+        return result
+
+    for author in authors:
+        if isinstance(author, str):
+            result.append(author.strip())
+
+        elif isinstance(author, dict):
+            name = author.get("name", "")
+
+            if name:
+                result.append(name.strip())
+
+    return result
+
+
+def ask_qwen_for_metadata(lines):
+    lines_text = json.dumps(lines, ensure_ascii=False, indent=2)
+
     prompt = f"""
-Ты извлекаешь метаданные из научной статьи.
+Ты извлекаешь метаданные русскоязычной научной статьи.
 
-Нужно найти только:
-1. название статьи
-2. автора или авторов
+Тебе дан список строк с первой страницы PDF.
+У каждой строки есть:
+- line_number
+- text
+- font_size
+- x
+- y
 
-Нельзя придумывать данные.
-Нельзя брать название раздела как название статьи.
-Нельзя брать abstract, ключевые слова, введение, предисловие как название.
+Нужно найти:
+1. Название статьи.
+2. Автора или авторов статьи.
 
-Верни строго JSON:
+Очень важные правила:
+- Верни только JSON.
+- Не придумывай данные.
+- Бери данные только из переданных строк.
+- Автор — это человек: фамилия и инициалы.
+- Примеры автора: "И. А. Горбунов", "Д.В. Зайцев", "Зайцев Д. В.", "И.Е. Малова".
+- Название статьи НЕ может состоять только из имени автора.
+- Если строка выглядит как "Д.В. Зайцев", это автор, а не название.
+- Название статьи обычно находится рядом с автором: выше или ниже.
+- Название может быть написано заглавными буквами.
+- Не бери УДК.
+- Не бери название журнала.
+- Не бери название университета.
+- Не бери слова "Аннотация" и "Ключевые слова".
+- Не бери должности, степени и звания как часть имени автора.
+- Если в строке есть автор, запятая и должность, оставь только имя автора.
+- authors должен быть списком строк, а не списком объектов.
+- Если первая строка самая крупная и не похожа на имя человека, почти всегда это название статьи.
+- Если следующая строка похожа на ФИО, это автор.
+- Удали сноски из названия, например "логики1" -> "логики".
+
+Верни строго в таком формате:
+
 {{
   "title": "",
   "authors": []
 }}
 
-Текст:
-{text}
+Строки первой страницы:
+{lines_text}
 """
 
     try:
@@ -71,26 +123,36 @@ def ask_qwen_for_metadata(text):
         )
 
         if response.status_code != 200:
+            print("Ошибка Ollama:", response.status_code)
+            print(response.text)
+
             return {
                 "title": "",
-                "authors": [],
-                "ollama_error": response.text
+                "authors": []
             }
 
         answer = response.json()["response"].strip()
+        data = json.loads(answer)
 
-        return json.loads(answer)
+        title = data.get("title", "")
+        authors = normalize_authors(data.get("authors", []))
+
+        return {
+            "title": title.strip(),
+            "authors": authors
+        }
 
     except Exception as error:
+        print("Ошибка при обращении к Qwen:", error)
+
         return {
             "title": "",
-            "authors": [],
-            "ollama_error": str(error)
+            "authors": []
         }
+
 
 def extract_article_metadata(doc):
     page = doc[0]
-
     page_dict = page.get_text("dict")
 
     lines = []
@@ -101,72 +163,42 @@ def extract_article_metadata(doc):
 
         for line in block["lines"]:
             text = ""
-
             max_size = 0
-            y = line["bbox"][1]
+            x0, y0, x1, y1 = line["bbox"]
 
             for span in line["spans"]:
                 text += span["text"]
                 max_size = max(max_size, span["size"])
 
-            text = clean_text(text)
+            text = clean_metadata_line(text)
 
             if text:
                 lines.append({
                     "text": text,
-                    "font_size": max_size,
-                    "y": y
+                    "font_size": round(max_size, 2),
+                    "x": round(x0, 2),
+                    "y": round(y0, 2)
                 })
 
-    lines = sorted(lines, key=lambda item: item["y"])
+    lines = sorted(lines, key=lambda item: (item["y"], item["x"]))
 
-    candidates = []
+    useful_lines = []
 
-    for line in lines[:15]:
-        text = line["text"]
+    for index, line in enumerate(lines[:40], start=1):
+        text_lower = line["text"].lower()
 
-        if len(text) < 3:
-            continue
+        if "аннотация" in text_lower or "ключевые слова" in text_lower:
+            break
 
-        if text.lower() in ["abstract", "аннотация", "ключевые слова"]:
-            continue
+        useful_lines.append({
+            "line_number": index,
+            "text": line["text"],
+            "font_size": line["font_size"],
+            "x": line["x"],
+            "y": line["y"]
+        })
 
-        candidates.append(line)
-
-    title = ""
-    authors = []
-
-    for item in candidates:
-        text = item["text"]
-
-        if not title and item["font_size"] >= 13:
-            title = re.sub(r"\d+$", "", text).strip()
-            continue
-
-        if title and not authors:
-            if re.search(r"[А-ЯЁ]\.\s*[А-ЯЁ]\.\s*[А-ЯЁ][а-яё]+", text):
-                authors.append(text.strip())
-                break
-
-    if title or authors:
-        return {
-            "title": title,
-            "authors": authors
-        }
-
-    first_pages_text = ""
-
-    max_pages = min(2, len(doc))
-
-    for page_num in range(max_pages):
-        first_pages_text += doc[page_num].get_text() + "\n"
-
-    first_pages_text = clean_text(first_pages_text)
-
-    if len(first_pages_text) > 3000:
-        first_pages_text = first_pages_text[:3000]
-
-    return ask_qwen_for_metadata(first_pages_text)
+    return ask_qwen_for_metadata(useful_lines)
 
 
 def extract_blocks(text):
@@ -205,8 +237,7 @@ def extract_blocks(text):
 
         results.append({
             "type": block_type,
-            "text": normalize_text(block_text),
-            "raw_text": block_text,
+            "text": block_text,
             "start_index": match.start(),
             "end_index": match.end()
         })
@@ -226,11 +257,7 @@ for file in os.listdir(folder):
 
         doc = fitz.open(path)
 
-        pdf_metadata = doc.metadata
-
         article_metadata = extract_article_metadata(doc)
-
-        pdf_author = pdf_metadata.get("author", "")
 
         article_title = article_metadata.get("title", "")
         article_authors = article_metadata.get("authors", [])
@@ -243,13 +270,11 @@ for file in os.listdir(folder):
             for block in blocks:
                 all_results.append({
                     "file": file,
-                    "pdf_author_metadata": pdf_author,
                     "article_title": article_title,
                     "article_authors": article_authors,
                     "page": page_num + 1,
                     "type": block["type"],
                     "text": block["text"],
-                    "raw_text": block["raw_text"],
                     "start_index": block["start_index"],
                     "end_index": block["end_index"]
                 })
