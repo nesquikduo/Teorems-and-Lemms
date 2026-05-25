@@ -17,7 +17,6 @@ def clean_text(text):
 def clean_metadata_line(text):
     text = clean_text(text)
     text = re.sub(r'([А-Яа-яЁёA-Za-z])\d+$', r'\1', text)
-
     return text.strip()
 
 def normalize_authors(authors):
