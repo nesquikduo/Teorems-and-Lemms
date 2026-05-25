@@ -67,7 +67,6 @@ def ask_qwen_for_metadata(lines):
 - Если строка выглядит как "Д.В. Зайцев", это автор, а не название.
 - Название статьи обычно находится рядом с автором: выше или ниже.
 - Название может быть написано заглавными буквами.
-- Не бери УДК.
 - Не бери название журнала.
 - Не бери название университета.
 - Не бери слова "Аннотация" и "Ключевые слова".
@@ -251,7 +250,7 @@ for file in os.listdir(folder):
                 all_results.append({
                     "file": file,
                     "article_title": article_title,
-                    "article_authors": article_authors,
+                    "article_authors": ", ".join(article_authors),
                     "page": page_num + 1,
                     "type": block["type"],
                     "text": block["text"],
