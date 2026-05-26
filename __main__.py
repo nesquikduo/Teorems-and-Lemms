@@ -180,7 +180,6 @@ def extract_article_metadata(doc):
 
     return ask_qwen_for_metadata(useful_lines)
 
-
 def extract_blocks(text):
     text = clean_text(text)
 
@@ -221,7 +220,6 @@ def extract_blocks(text):
         })
 
     return results
-
 
 folder = "pdf_files"
 
